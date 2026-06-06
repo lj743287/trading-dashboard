@@ -720,13 +720,26 @@ function loadCFG(){try{return Object.assign({},DEF,JSON.parse(localStorage.getIt
 function loadArr(k){var r=b64d(localStorage.getItem(k)||'');return Array.isArray(r)?r:[];}
 function loadObj(k){var r=b64d(localStorage.getItem(k)||'');return r&&typeof r==='object'&&!Array.isArray(r)?r:{};}
 function saveCFG(){localStorage.setItem('tm_cfg',JSON.stringify(CFG));}
-function saveTrades(){localStorage.setItem('tm_trades',b64e(trades));}
-function saveClosed(){localStorage.setItem('tm_closed',b64e(closedTrades));}
-function saveFunds(){localStorage.setItem('tm_funds',b64e(funds));}
+
+// Auto-push to cloud 4 seconds after any data change (debounced)
+var autoPushTimer=null;
+function scheduleAutoPush(){
+  if(!CFG.jbKey||!CFG.jbBin)return; // only if cloud sync is configured
+  clearTimeout(autoPushTimer);
+  autoPushTimer=setTimeout(function(){
+    var data={trades:trades,closedTrades:closedTrades,funds:funds,genesis:genesis,snaps:snaps,tickerMeta:tickerMeta,cash:cash,income:income};
+    fetch(JB+'/'+CFG.jbBin,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':CFG.jbKey},body:JSON.stringify(data)})
+      .then(function(r){if(r.ok)toast('Auto-saved to cloud ✓','ok');})
+      .catch(function(){});
+  },4000);
+}
+function saveTrades(){localStorage.setItem('tm_trades',b64e(trades));;scheduleAutoPush();}
+function saveClosed(){localStorage.setItem('tm_closed',b64e(closedTrades));;scheduleAutoPush();}
+function saveFunds(){localStorage.setItem('tm_funds',b64e(funds));;scheduleAutoPush();}
 function saveSnaps(){localStorage.setItem('tm_snaps',b64e(snaps));}
-function saveGenesis(){localStorage.setItem('tm_genesis',b64e(genesis));}
-function saveCash(){localStorage.setItem('tm_cash',b64e(cash));}
-function saveIncome(){localStorage.setItem('tm_income',b64e(income));}
+function saveGenesis(){localStorage.setItem('tm_genesis',b64e(genesis));;scheduleAutoPush();}
+function saveCash(){localStorage.setItem('tm_cash',b64e(cash));;scheduleAutoPush();}
+function saveIncome(){localStorage.setItem('tm_income',b64e(income));;scheduleAutoPush();}
 function saveTickerMeta(){localStorage.setItem('tm_tkrmeta',b64e(tickerMeta));}
 
 // ═══════════════════════════════════════════════════════════════
