@@ -1430,15 +1430,16 @@ async function cloudPull(){
   }catch(e){toast('Cloud pull failed: '+e.message,'err');}
 }
 async function autoSync(){
-  // Called on load if cloud sync configured: pull latest then push after any change
   if(!CFG.jbKey||!CFG.jbBin)return;
   try{
     var r=await fetch(JB+'/'+CFG.jbBin+'/latest',{headers:{'X-Master-Key':CFG.jbKey}});
     if(!r.ok)return;
     var json=await r.json();
     var data=json.record||json;
-    if(data.trades&&data.trades.length>trades.length){
-      // Remote has more data — pull silently
+    var localTs=parseInt(localStorage.getItem('tm_last_push')||'0');
+    var remoteTs=data._ts||0;
+    // Pull if remote is newer than what we last pushed
+    if(remoteTs>localTs){
       if(data.trades)trades=data.trades;
       if(data.closedTrades)closedTrades=data.closedTrades;
       if(data.funds)funds=data.funds;
@@ -1448,8 +1449,9 @@ async function autoSync(){
       if(data.cash)cash=data.cash;
       if(data.income)income=data.income;
       saveTrades();saveClosed();saveFunds();saveGenesis();saveSnaps();saveTickerMeta();saveCash();saveIncome();
+      localStorage.setItem('tm_last_push',remoteTs);
       render();
-      toast('Synced from cloud','ok');
+      toast('\u2601 Synced latest data from cloud','ok');
     }
   }catch(e){}
 }
@@ -2250,6 +2252,13 @@ document.getElementById('btn-cloud-pull').onclick=cloudPull;
     console.error('Init error:', e);
   }
 }());
+
+// Auto-sync when user returns to the tab or app (covers switching devices/tabs)
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden)autoSync();
+});
+// Also auto-sync every 60 seconds while the page is open
+setInterval(function(){if(!document.hidden)autoSync();},60000);
 }); // DOMContentLoaded
 </script>
 </body>
