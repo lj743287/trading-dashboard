@@ -500,7 +500,7 @@ header{height:46px;background:var(--dk);color:#fff;display:flex;align-items:cent
 <header>
   <div class="logo">Trade Manager <span>&middot; Nasdaq Momentum</span></div>
   <div class="hbtns">
-    <span id="last-upd"></span>
+    <span id="sync-status" title="Cloud sync status" style="font-size:11px;display:flex;align-items:center;gap:4px"></span><span id="last-upd"></span>
     <button class="hbtn" id="btn-rf">&#8635; Refresh</button>
     <button class="hbtn" id="btn-set">&#9881; Settings</button>
   </div>
@@ -723,15 +723,63 @@ function saveCFG(){localStorage.setItem('tm_cfg',JSON.stringify(CFG));}
 
 // Auto-push to cloud 4 seconds after any data change (debounced)
 var autoPushTimer=null;
+function setSyncStatus(s,msg){
+  var el=document.getElementById('sync-status');if(!el)return;
+  var cols={idle:'rgba(255,255,255,.25)',pushing:'#5ba3e8',pulling:'#5ba3e8',ok:'#6dd66d',error:'#f08080'};
+  var icons={idle:'',pushing:'\u2601 ',pulling:'\u2b07 ',ok:'\u2705 ',error:'\u274c '};
+  if(CFG.jbKey&&CFG.jbBin)el.innerHTML='<span style="color:'+cols[s]+';font-size:10px">'+icons[s]+(msg||'')+'</span>';
+}
+function getCloudData(){
+  return{trades:trades,closedTrades:closedTrades,funds:funds,genesis:genesis,
+    snaps:snaps,tickerMeta:tickerMeta,cash:cash,income:income,_ts:Date.now()};
+}
+function applyCloudData(data){
+  if(data.trades)trades=data.trades;if(data.closedTrades)closedTrades=data.closedTrades;
+  if(data.funds)funds=data.funds;if(data.genesis)genesis=data.genesis;
+  if(data.snaps)snaps=data.snaps;if(data.tickerMeta)tickerMeta=data.tickerMeta;
+  if(data.cash)cash=data.cash;if(data.income)income=data.income;
+  saveTrades();saveClosed();saveFunds();saveGenesis();saveSnaps();saveTickerMeta();saveCash();saveIncome();
+  if(data._ts)localStorage.setItem('tm_last_push',data._ts);
+}
+async function doPush(retries){
+  if(!CFG.jbKey||!CFG.jbBin)return;retries=retries||0;
+  setSyncStatus('pushing','saving...');
+  try{
+    var data=getCloudData();
+    var r=await fetch(JB+'/'+CFG.jbBin,{method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':CFG.jbKey},body:JSON.stringify(data)});
+    if(r.ok){localStorage.setItem('tm_last_push',data._ts);setSyncStatus('ok','saved');setTimeout(function(){setSyncStatus('idle');},3000);}
+    else throw new Error('HTTP '+r.status);
+  }catch(e){
+    if(retries<3){setTimeout(function(){doPush(retries+1);},3000*(retries+1));setSyncStatus('pushing','retrying...');}
+    else{setSyncStatus('error','failed');setTimeout(function(){setSyncStatus('idle');},5000);}
+  }
+}
+async function doPull(silent){
+  if(!CFG.jbKey||!CFG.jbBin)return false;
+  if(!silent)setSyncStatus('pulling','checking...');
+  try{
+    var r=await fetch(JB+'/'+CFG.jbBin+'/latest',{headers:{'X-Master-Key':CFG.jbKey}});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    var json=await r.json();var data=json.record||json;
+    var localTs=parseInt(localStorage.getItem('tm_last_push')||'0');
+    var remoteTs=data._ts||0;
+    var localCount=trades.length+closedTrades.length;
+    var remoteCount=(data.trades?data.trades.length:0)+(data.closedTrades?data.closedTrades.length:0);
+    var needsPull=(remoteTs>localTs)||(remoteTs===0&&remoteCount!==localCount)||(localTs===0&&remoteCount>0);
+    if(needsPull){
+      applyCloudData(data);render();
+      setSyncStatus('ok','updated');setTimeout(function(){setSyncStatus('idle');},3000);return true;
+    } else {
+      if(!silent){setSyncStatus('ok','up to date');setTimeout(function(){setSyncStatus('idle');},2000);}
+      return false;
+    }
+  }catch(e){setSyncStatus('error','failed');setTimeout(function(){setSyncStatus('idle');},4000);return false;}
+}
 function scheduleAutoPush(){
-  if(!CFG.jbKey||!CFG.jbBin)return; // only if cloud sync is configured
+  if(!CFG.jbKey||!CFG.jbBin)return;
   clearTimeout(autoPushTimer);
-  autoPushTimer=setTimeout(function(){
-    var data={trades:trades,closedTrades:closedTrades,funds:funds,genesis:genesis,snaps:snaps,tickerMeta:tickerMeta,cash:cash,income:income};
-    fetch(JB+'/'+CFG.jbBin,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':CFG.jbKey},body:JSON.stringify(data)})
-      .then(function(r){if(r.ok)toast('Auto-saved to cloud ✓','ok');})
-      .catch(function(){});
-  },4000);
+  autoPushTimer=setTimeout(function(){doPush(0);},2000);
 }
 function saveTrades(){localStorage.setItem('tm_trades',b64e(trades));;scheduleAutoPush();}
 function saveClosed(){localStorage.setItem('tm_closed',b64e(closedTrades));;scheduleAutoPush();}
@@ -1430,33 +1478,7 @@ async function cloudPull(){
   }catch(e){toast('Cloud pull failed: '+e.message,'err');}
 }
 async function autoSync(){
-  if(!CFG.jbKey||!CFG.jbBin)return;
-  try{
-    var r=await fetch(JB+'/'+CFG.jbBin+'/latest',{headers:{'X-Master-Key':CFG.jbKey}});
-    if(!r.ok)return;
-    var json=await r.json();
-    var data=json.record||json;
-    var localTs=parseInt(localStorage.getItem('tm_last_push')||'0');
-    var remoteTs=data._ts||0;
-    var localTradeCount=trades.length+closedTrades.length;
-    var remoteTradeCount=(data.trades?data.trades.length:0)+(data.closedTrades?data.closedTrades.length:0);
-    // Pull if: remote is newer by timestamp, OR trade counts differ, OR no timestamp yet
-    var shouldPull=(remoteTs>localTs)||(remoteTs===0&&remoteTradeCount!==localTradeCount)||(remoteTs>0&&localTs===0);
-    if(shouldPull){
-      if(data.trades)trades=data.trades;
-      if(data.closedTrades)closedTrades=data.closedTrades;
-      if(data.funds)funds=data.funds;
-      if(data.genesis)genesis=data.genesis;
-      if(data.snaps)snaps=data.snaps;
-      if(data.tickerMeta)tickerMeta=data.tickerMeta;
-      if(data.cash)cash=data.cash;
-      if(data.income)income=data.income;
-      saveTrades();saveClosed();saveFunds();saveGenesis();saveSnaps();saveTickerMeta();saveCash();saveIncome();
-      localStorage.setItem('tm_last_push',remoteTs);
-      render();
-      toast('\u2601 Synced latest data from cloud','ok');
-    }
-  }catch(e){}
+  await doPull(true); // silent pull on load
 }
 
 function openSettings(){
@@ -2235,8 +2257,8 @@ document.getElementById('mok-fund').onclick=saveFundModal;
 document.getElementById('btn-export').onclick=exportData;
 document.getElementById('btn-import-lbl').onclick=function(){document.getElementById('btn-import').click();};
 document.getElementById('btn-import').onchange=function(e){importData(e.target.files[0]);};
-document.getElementById('btn-cloud-push').onclick=cloudPush;
-document.getElementById('btn-cloud-pull').onclick=cloudPull;
+document.getElementById('btn-cloud-push').onclick=function(){doPush(0);};
+document.getElementById('btn-cloud-pull').onclick=function(){doPull(false);};
 
 // Overlay click to close
 ['set','add','close','edit','part','fund','cash','income'].forEach(function(n){
@@ -2256,12 +2278,16 @@ document.getElementById('btn-cloud-pull').onclick=cloudPull;
   }
 }());
 
-// Auto-sync when user returns to the tab or app (covers switching devices/tabs)
+// Pull when tab becomes visible (switching back to app)
 document.addEventListener('visibilitychange',function(){
-  if(!document.hidden)autoSync();
+  if(!document.hidden)doPull(true);
 });
-// Also auto-sync every 60 seconds while the page is open
-setInterval(function(){if(!document.hidden)autoSync();},60000);
+// Pull when window gets focus (switching back from another app)
+window.addEventListener('focus',function(){doPull(true);});
+// Background sync every 30 seconds
+setInterval(function(){if(!document.hidden)doPull(true);},30000);
+// Update sync status badge on load
+setTimeout(function(){setSyncStatus('idle');},1000);
 }); // DOMContentLoaded
 </script>
 </body>
