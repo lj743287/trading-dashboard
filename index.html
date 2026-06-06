@@ -1389,7 +1389,7 @@ function importData(file){
 var JB='https://api.jsonbin.io/v3/b';
 async function cloudPush(){
   if(!CFG.jbKey||!CFG.jbBin){toast('Add JSONBin key and bin ID in Settings','warn');return;}
-  var data={trades,closedTrades,funds,genesis,snaps,tickerMeta};
+  var data={trades:trades,closedTrades:closedTrades,funds:funds,genesis:genesis,snaps:snaps,tickerMeta:tickerMeta,cash:cash,income:income};
   try{
     var r=await fetch(JB+'/'+CFG.jbBin,{method:'PUT',headers:{'Content-Type':'application/json','X-Master-Key':CFG.jbKey},body:JSON.stringify(data)});
     if(r.ok){toast('Synced to cloud ✓','ok');}
@@ -1430,7 +1430,9 @@ async function autoSync(){
       if(data.genesis)genesis=data.genesis;
       if(data.snaps)snaps=data.snaps;
       if(data.tickerMeta)tickerMeta=data.tickerMeta;
-      saveTrades();saveClosed();saveFunds();saveGenesis();saveSnaps();saveTickerMeta();
+      if(data.cash)cash=data.cash;
+      if(data.income)income=data.income;
+      saveTrades();saveClosed();saveFunds();saveGenesis();saveSnaps();saveTickerMeta();saveCash();saveIncome();
       render();
       toast('Synced from cloud','ok');
     }
