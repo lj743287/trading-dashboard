@@ -1410,6 +1410,8 @@ async function cloudPull(){
     if(data.genesis){genesis=data.genesis;saveGenesis();}
     if(data.snaps){snaps=data.snaps;saveSnaps();}
     if(data.tickerMeta){tickerMeta=data.tickerMeta;saveTickerMeta();}
+    if(data.cash){cash=data.cash;saveCash();}
+    if(data.income){income=data.income;saveIncome();}
     render();
     toast('Cloud data pulled ✓','ok');
   }catch(e){toast('Cloud pull failed: '+e.message,'err');}
