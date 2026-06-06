@@ -1438,8 +1438,11 @@ async function autoSync(){
     var data=json.record||json;
     var localTs=parseInt(localStorage.getItem('tm_last_push')||'0');
     var remoteTs=data._ts||0;
-    // Pull if remote is newer than what we last pushed
-    if(remoteTs>localTs){
+    var localTradeCount=trades.length+closedTrades.length;
+    var remoteTradeCount=(data.trades?data.trades.length:0)+(data.closedTrades?data.closedTrades.length:0);
+    // Pull if: remote is newer by timestamp, OR trade counts differ, OR no timestamp yet
+    var shouldPull=(remoteTs>localTs)||(remoteTs===0&&remoteTradeCount!==localTradeCount)||(remoteTs>0&&localTs===0);
+    if(shouldPull){
       if(data.trades)trades=data.trades;
       if(data.closedTrades)closedTrades=data.closedTrades;
       if(data.funds)funds=data.funds;
