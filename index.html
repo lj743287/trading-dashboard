@@ -2077,6 +2077,9 @@ function buildGrowthChart(){
     document.getElementById('growth-chart-note').textContent='No data yet — open the app daily to build history.';
     return;
   }
+  // Baseline date — only show snapshots from baseline onwards when on 'All' view
+  var baselineDate=genesis&&genesis.date?genesis.date:null;
+  if(CFG.openingBal>0&&genesis&&genesis.date)baselineDate=genesis.date;
   // Filter by timeframe
   var cutoff=null;
   var now=new Date();
@@ -2084,6 +2087,8 @@ function buildGrowthChart(){
   else if(currentGrowthTF==='1M'){cutoff=new Date(now);cutoff.setDate(cutoff.getDate()-30);}
   else if(currentGrowthTF==='3M'){cutoff=new Date(now);cutoff.setDate(cutoff.getDate()-90);}
   else if(currentGrowthTF==='YTD'){cutoff=new Date(now.getFullYear()+'-01-01');}
+  // For 'All': start from baseline date so chart begins at the reference point
+  else if(currentGrowthTF==='ALL'&&baselineDate){cutoff=new Date(baselineDate);}
   var filtered=cutoff?snapDates.filter(function(d){return new Date(d)>=cutoff;}):snapDates;
   if(!filtered.length)filtered=snapDates;
   var labels=filtered;
@@ -2094,7 +2099,12 @@ function buildGrowthChart(){
     labels=labels.concat(todayStr);
     values=values.concat(Math.round(totalGBP()));
   }
-  var baselineVal=genesis&&genesis.gbp?Math.round(genesis.gbp):null;
+  var baselineVal=CFG.openingBal>0?Math.round(CFG.openingBal):(genesis&&genesis.gbp?Math.round(genesis.gbp):null);
+  // Prepend baseline as first point if it's earlier than the first snapshot
+  if(baselineVal&&baselineDate&&(!filtered.length||filtered[0]>baselineDate)){
+    labels=[baselineDate].concat(labels);
+    values=[baselineVal].concat(values);
+  }
   var note='';
   if(baselineVal)note='Baseline: '+fGBP(baselineVal)+' ('+genesis.date+')  &bull;  Current: '+fGBP(totalGBP())+
     '  &bull;  Change: <b style="color:'+pclr(totalGBP()-baselineVal)+'">'+fGBP(totalGBP()-baselineVal)+' ('+fP((totalGBP()-baselineVal)/baselineVal*100)+')</b>';
