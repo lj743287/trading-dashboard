@@ -926,13 +926,23 @@ function getSnap(daysAgo){
   for(var i=0;i<keys.length;i++){if(keys[i]<=ts)best=snaps[keys[i]];}
   return best;
 }
+function formatMktPrice(p,key){
+  if(!p)return '-';
+  // FX rates: show 4dp; crypto: 0dp if >100; others: 2dp
+  if(key==='GBPUSD'||key==='EURUSD')return p.toFixed(4);
+  if(key==='BTC'&&p>1000)return '$'+Math.round(p).toLocaleString();
+  if(p>=1000)return p>=10000?Math.round(p).toLocaleString():p.toFixed(0);
+  return p.toFixed(2);
+}
 function portPerfs(){
   var now=totalGBP();
   function pct(snap){return snap&&snap.gbp?(now-snap.gbp)/snap.gbp*100:null;}
   function dif(snap){return snap&&snap.gbp?now-snap.gbp:null;}
   var s1d=getSnap(1),s1w=getSnap(7),s1m=getSnap(30),sYtd=null;
   var y=new Date().getFullYear()+'-01-01';
-  Object.keys(snaps).sort().forEach(function(d){if(d>=y&&!sYtd)sYtd=snaps[d];});
+  // YTD: find last snapshot from BEFORE Jan 1 (previous year-end baseline)
+  // If no pre-Jan-1 snapshot exists, YTD shows '--' rather than using a mid-year snap
+  Object.keys(snaps).sort().forEach(function(d){if(d<y)sYtd=snaps[d];});
   // Use explicit opening balance if set, otherwise genesis snapshot
   var openBal=CFG.openingBal||0;
   var sAll=openBal>0?{gbp:openBal}:(genesis&&genesis.gbp?genesis:null);
@@ -1691,14 +1701,16 @@ function renderSidebar(){
       +'<span class="pg-v" style="color:'+clr+'">'+(p.pct!==null?fP(p.pct):'--')+'</span>';
   });
   var mg=document.getElementById('sb-mkt');
-  mg.innerHTML='<span class="mg-h" style="text-align:left">Instrument</span><span class="mg-h">1D</span><span class="mg-h">YTD</span>';
+  mg.innerHTML='<span class="mg-h" style="text-align:left">Instrument</span><span class="mg-h">Price</span><span class="mg-h">1D</span><span class="mg-h">YTD</span>';
   MKTS.forEach(function(m){
     var d=mktCache[m.key];
     var c1d=d&&d.c1d!=null?fP(d.c1d):'-';
     var cYtd=d&&d.cYtd!=null?fP(d.cYtd):'-';
     var c1dClr=d&&d.c1d!=null?pclr(d.c1d):'rgba(255,255,255,.25)';
     var cYtdClr=d&&d.cYtd!=null?pclr(d.cYtd):'rgba(255,255,255,.25)';
+    var priceStr=d&&d.price?formatMktPrice(d.price,m.key):'-';
     mg.innerHTML+='<span class="mg-n">'+m.name+'</span>'
+      +'<span class="mg-p" style="color:rgba(255,255,255,.6)">'+priceStr+'</span>'
       +'<span class="mg-p" style="color:'+c1dClr+'">'+c1d+'</span>'
       +'<span class="mg-p" style="color:'+cYtdClr+'">'+cYtd+'</span>';
   });
