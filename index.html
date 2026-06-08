@@ -1021,30 +1021,33 @@ async function apiFX(sym){
   catch(e){return null;}
 }
 async function fetchFundHistory(){
-  var tickers=[...new Set(funds.filter(function(f){return f.ticker&&!f.priceOverride;}).map(function(f){return f.ticker;}))];
+  // Include ALL tickers — price override is for current price only, history still needed for % performance
+  var tickers=[...new Set(funds.filter(function(f){return f.ticker;}).map(function(f){return f.ticker;}))];
   if(!tickers.length||!CFG.apiKey)return;
-  // LSE exchange suffixes to try if plain ticker fails
-  var fallbacks=[':LSE',':XLON','.L'];
+  // Try multiple exchange suffixes — covers LSE, Euronext, XETRA listed ETFs
+  var fallbacks=[':LSE',':XLON',':EURONEXT',':XETR','.L'];
   for(var i=0;i<tickers.length;i++){
     var sym=tickers[i];
-    var vals=await apiTS(sym,270);
-    // If plain ticker fails, try with exchange suffixes
-    if(!vals){
-      for(var j=0;j<fallbacks.length;j++){
-        await new Promise(function(res){setTimeout(res,300);});
-        vals=await apiTS(sym+fallbacks[j],270);
-        if(vals)break;
+    try{
+      var vals=await apiTS(sym,270);
+      if(!vals){
+        for(var j=0;j<fallbacks.length;j++){
+          await new Promise(function(res2){setTimeout(res2,300);});
+          vals=await apiTS(sym+fallbacks[j],270);
+          if(vals)break;
+        }
       }
-    }
-    if(vals){
-      var hist=processTS(vals);
-      if(hist){
-        if(!tickerMeta[sym])tickerMeta[sym]={};
-        tickerMeta[sym].history=hist;
-        prices[sym]=hist.price;
+      if(vals){
+        var hist=processTS(vals);
+        if(hist){
+          if(!tickerMeta[sym])tickerMeta[sym]={};
+          tickerMeta[sym].history=hist;
+          var matchFund=funds.find(function(f){return f.ticker===sym;});
+          if(matchFund&&!matchFund.priceOverride)prices[sym]=hist.price;
+        }
       }
-    }
-    await new Promise(function(res){setTimeout(res,300);});
+    }catch(e){}
+    await new Promise(function(res){setTimeout(res,400);});
   }
 }
 
@@ -1098,11 +1101,15 @@ async function refreshAll(){
   var tradeSym=[...new Set(trades.map(function(t){return t.symbol;}))];
   var fundTkr=funds.filter(function(f){return f.ticker;}).map(function(f){return f.ticker;});
   var all=[...new Set([...tradeSym,...fundTkr])];
-  var res=await Promise.allSettled([all.length?apiPrices(all):Promise.resolve({}),fetchMkt(),fetchAllMkts(),fetchFundHistory()]);
+  var res=await Promise.allSettled([all.length?apiPrices(all):Promise.resolve({}),fetchMkt(),fetchAllMkts()]);
   if(res[0].status==='fulfilled')Object.assign(prices,res[0].value);
   takeSnap();
   render();
   checkAlerts();
+  // Fetch fund history after main render — avoids rate limiting, re-renders when ready
+  fetchFundHistory().then(function(){
+    renderPortfolio();
+  }).catch(function(){});
   document.getElementById('last-upd').textContent='Updated '+new Date().toLocaleTimeString();
   clearTimeout(rtimer);rtimer=setTimeout(refreshAll,180000);
 }
