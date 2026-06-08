@@ -311,6 +311,7 @@ header{height:46px;background:var(--dk);color:#fff;display:flex;align-items:cent
   </div>
   <div class="mfoot" style="flex-wrap:wrap;gap:6px">
     <button id="btn-export" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent">&#8659; Export data</button>
+    <button id="btn-restore-bk" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent;color:var(--a)">&#8617; Restore backup</button>
     <button id="btn-import-lbl" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent">&#8657; Import data</button>
     <input id="btn-import" type="file" accept=".json" style="display:none">
     <div style="flex:1"></div>
@@ -735,11 +736,38 @@ function setSyncStatus(s,msg){
   var icons={idle:'',pushing:'\u2601 ',pulling:'\u2b07 ',ok:'\u2705 ',error:'\u274c '};
   if(CFG.jbKey&&CFG.jbBin)el.innerHTML='<span style="color:'+cols[s]+';font-size:10px">'+icons[s]+(msg||'')+'</span>';
 }
+function saveLocalBackup(){
+  // Save a snapshot of current data before any destructive operation
+  try{
+    var bk={ts:Date.now(),trades:trades,closedTrades:closedTrades,funds:funds,
+      cash:cash,income:income,genesis:genesis,snaps:snaps};
+    localStorage.setItem('tm_local_bk',b64e(bk));
+  }catch(e){}
+}
+function restoreLocalBackup(){
+  var bk=b64d(localStorage.getItem('tm_local_bk')||'');
+  if(!bk||!bk.ts){toast('No local backup found','warn');return;}
+  var mins=Math.round((Date.now()-bk.ts)/60000);
+  var age=mins<2?'moments ago':mins<60?mins+' minutes ago':Math.round(mins/60)+' hours ago';
+  if(!confirm('Restore local backup from '+age+'?\n\nThis will replace your current data.'))return;
+  if(bk.trades)trades=bk.trades;
+  if(bk.closedTrades)closedTrades=bk.closedTrades;
+  if(bk.funds)funds=bk.funds;
+  if(bk.cash)cash=bk.cash;
+  if(bk.income)income=bk.income;
+  if(bk.genesis)genesis=bk.genesis;
+  if(bk.snaps)snaps=bk.snaps;
+  saveTrades();saveClosed();saveFunds();saveCash();saveIncome();saveGenesis();saveSnaps();
+  render();
+  toast('Backup restored from '+age,'ok');
+}
+
 function getCloudData(){
   return{trades:trades,closedTrades:closedTrades,funds:funds,genesis:genesis,
     snaps:snaps,tickerMeta:tickerMeta,cash:cash,income:income,_ts:Date.now()};
 }
 function applyCloudData(data){
+  saveLocalBackup(); // always save before overwriting
   if(data.trades)trades=data.trades;if(data.closedTrades)closedTrades=data.closedTrades;
   if(data.funds)funds=data.funds;if(data.genesis)genesis=data.genesis;
   if(data.snaps)snaps=data.snaps;if(data.tickerMeta)tickerMeta=data.tickerMeta;
@@ -772,7 +800,11 @@ async function doPull(silent){
     var remoteTs=data._ts||0;
     var localCount=trades.length+closedTrades.length;
     var remoteCount=(data.trades?data.trades.length:0)+(data.closedTrades?data.closedTrades.length:0);
-    var needsPull=(remoteTs>localTs)||(remoteTs===0&&remoteCount!==localCount)||(localTs===0&&remoteCount>0);
+    // Only pull if remote is definitively newer — never overwrite local with less data
+    var remoteHasMore=remoteCount>localCount;
+    var remoteIsNewer=remoteTs>localTs&&remoteTs>0;
+    var localIsEmpty=localCount===0&&localTs===0&&remoteCount>0;
+    var needsPull=remoteIsNewer||localIsEmpty||(remoteTs===0&&remoteHasMore);
     if(needsPull){
       applyCloudData(data);render();
       setSyncStatus('ok','updated');setTimeout(function(){setSyncStatus('idle');},3000);return true;
@@ -1130,6 +1162,7 @@ function updateCloseSummary(){
   document.getElementById('c-sum').innerHTML='<div class="calc-box"><div class="crow"><span>'+t.qty+' shares x $'+f2(cp)+'</span><span class="cval" style="color:'+pclr(pnl)+'">'+fUSD(pnl)+'</span></div><div class="crow"><span>Return from entry</span><span class="cval" style="color:'+pclr(ret)+'">'+fP(ret)+'</span></div></div>';
 }
 function confirmClose(){
+  saveLocalBackup();
   if(!closingId)return;
   var cp=parseFloat(document.getElementById('c-price').value);
   if(!cp){toast('Enter exit price','err');return;}
@@ -1213,6 +1246,7 @@ function updateAddCalc(){
   div.innerHTML='<div class="calc-box"><div class="crow"><span>Stop distance</span><span class="cval">'+calc.sp+'%</span></div><div class="crow"><span>Tier</span><span class="cval">'+calc.tier.lbl+' <span class="tpill '+calc.tier.cls+'">'+calc.tier.risk+'% risk</span></span></div><div class="crow"><span>Position size</span><span class="cval">$'+parseInt(calc.sz).toLocaleString()+' ('+calc.qty+' shares)</span></div><div class="crow"><span>Max loss</span><span class="cval" style="color:var(--r)">$'+parseInt(calc.maxL).toLocaleString()+'</span></div><div class="crow"><span>Partial target (+'+CFG.pLvl+'%)</span><span class="cval">$'+(entry*(1+CFG.pLvl/100)).toFixed(2)+'</span></div><div class="crow"><span>Profit target (+'+CFG.tgt+'%)</span><span class="cval" style="color:var(--g)">$'+(entry*(1+CFG.tgt/100)).toFixed(2)+'</span></div></div>';
 }
 function doAddTrade(){
+  saveLocalBackup();
   var sym=document.getElementById('a-sym').value.trim().toUpperCase();
   var entry=parseFloat(document.getElementById('a-ep').value);
   var stop=parseFloat(document.getElementById('a-sp').value);
@@ -1337,6 +1371,7 @@ function openEditFund(id){
   openModal('fund');
 }
 function saveFundModal(){
+  saveLocalBackup();
   var tkr=document.getElementById('f-tkr').value.trim().toUpperCase();
   var units=parseFloat(document.getElementById('f-units').value)||0;
   var manual=parseFloat(document.getElementById('f-manual').value)||0;
@@ -1386,6 +1421,7 @@ function openCash(){
   openModal('cash');
 }
 function saveCashModal(){
+  saveLocalBackup();
   cash.gbp=parseFloat(document.getElementById('cash-gbp').value)||0;
   cash.usd=parseFloat(document.getElementById('cash-usd').value)||0;
   saveCash();render();closeModal('cash');
@@ -2310,6 +2346,7 @@ document.getElementById('mok-fund').onclick=saveFundModal;
 
 // Export / Import / Cloud sync
 document.getElementById('btn-export').onclick=exportData;
+document.getElementById('btn-restore-bk').onclick=restoreLocalBackup;
 document.getElementById('btn-import-lbl').onclick=function(){document.getElementById('btn-import').click();};
 document.getElementById('btn-import').onchange=function(e){importData(e.target.files[0]);};
 document.getElementById('btn-cloud-push').onclick=function(){doPush(0);};
