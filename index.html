@@ -302,6 +302,12 @@ header{height:46px;background:var(--dk);color:#fff;display:flex;align-items:cent
       <div class="fld"><label>JSONBin Master Key</label><input id="cfg-jbkey" type="password" placeholder="$2b$10..."><div class="hint">Settings &rarr; API Keys on jsonbin.io</div></div>
       <div class="fld"><label>JSONBin Bin ID</label><input id="cfg-jbbin" placeholder="65abc123..."><div class="hint">Shown when you create a bin</div></div>
     </div>
+    <div class="fslbl">Portfolio baseline</div>
+    <div class="fld">
+      <label>Opening portfolio value (&pound; GBP)</label>
+      <input id="cfg-opening-bal" type="number" step="0.01" placeholder="e.g. 150000">
+      <div class="hint">Your portfolio value when you started tracking. Used for all-time performance.</div>
+    </div>
   </div>
   <div class="mfoot" style="flex-wrap:wrap;gap:6px">
     <button id="btn-export" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent">&#8659; Export data</button>
@@ -697,7 +703,7 @@ window.onerror = function(msg, src, line, col, err) {
 // ═══════════════════════════════════════════════════════════════
 // CONFIG & STORAGE
 // ═══════════════════════════════════════════════════════════════
-var DEF={apiKey:'',idx:'ONEQ',cap:100000,maxP:15000,minS:2,t1:.5,t2:1,t3:1.5,be:2,pLvl:15,pFrac:25,tgt:45,jbKey:'',jbBin:''};
+var DEF={apiKey:'',idx:'ONEQ',cap:100000,maxP:15000,minS:2,t1:.5,t2:1,t3:1.5,be:2,pLvl:15,pFrac:25,tgt:45,jbKey:'',jbBin:'',openingBal:0};
 var CFG=loadCFG();
 var trades=loadArr('tm_trades');
 var closedTrades=loadArr('tm_closed');
@@ -895,7 +901,9 @@ function portPerfs(){
   var s1d=getSnap(1),s1w=getSnap(7),s1m=getSnap(30),sYtd=null;
   var y=new Date().getFullYear()+'-01-01';
   Object.keys(snaps).sort().forEach(function(d){if(d>=y&&!sYtd)sYtd=snaps[d];});
-  var sAll=genesis&&genesis.gbp?genesis:null;
+  // Use explicit opening balance if set, otherwise genesis snapshot
+  var openBal=CFG.openingBal||0;
+  var sAll=openBal>0?{gbp:openBal}:(genesis&&genesis.gbp?genesis:null);
   return[
     {label:'Today',   dif:dif(s1d), pct:pct(s1d)},
     {label:'1 week',  dif:dif(s1w), pct:pct(s1w)},
@@ -907,6 +915,13 @@ function portPerfs(){
 function fundPerfs(f){
   var cur=fundVal(f);
   function p(v){return v&&v>0?(cur-v)/v*100:null;}
+  // Use live Twelve Data history if available for this ticker
+  var hist=f.ticker&&tickerMeta[f.ticker]?tickerMeta[f.ticker].history:null;
+  if(hist){
+    // For pence-quoted, % change is the same regardless of conversion
+    var vAll=f.vAtStart?p(f.vAtStart):null;
+    return{v1d:hist.c1d,v1w:hist.c1w,v1m:hist.c1m,vYtd:hist.cYtd,vAll:vAll};
+  }
   return{v1d:p(f.v1dAgo),v1w:p(f.v1wAgo),v1m:null,vYtd:p(f.vYtdStart),vAll:p(f.vAtStart)};
 }
 function stratPerfs(){
@@ -973,6 +988,25 @@ async function apiFX(sym){
   try{var r=await fetch(TD+'/exchange_rate?symbol='+encodeURIComponent(sym)+'&apikey='+CFG.apiKey);var d=await r.json();return d.rate?parseFloat(d.rate):null;}
   catch(e){return null;}
 }
+async function fetchFundHistory(){
+  var tickers=[...new Set(funds.filter(function(f){return f.ticker&&!f.priceOverride;}).map(function(f){return f.ticker;}))];
+  if(!tickers.length||!CFG.apiKey)return;
+  for(var i=0;i<tickers.length;i++){
+    var sym=tickers[i];
+    var vals=await apiTS(sym,270);
+    if(vals){
+      var hist=processTS(vals);
+      if(hist){
+        if(!tickerMeta[sym])tickerMeta[sym]={};
+        tickerMeta[sym].history=hist;
+        // Update raw price from latest data
+        prices[sym]=hist.price;
+      }
+    }
+    await new Promise(function(res){setTimeout(res,200);});
+  }
+}
+
 async function fetchMkt(){
   var candidates=[CFG.idx,'QQQ','SPY'];
   for(var i=0;i<candidates.length;i++){
@@ -1023,7 +1057,7 @@ async function refreshAll(){
   var tradeSym=[...new Set(trades.map(function(t){return t.symbol;}))];
   var fundTkr=funds.filter(function(f){return f.ticker;}).map(function(f){return f.ticker;});
   var all=[...new Set([...tradeSym,...fundTkr])];
-  var res=await Promise.allSettled([all.length?apiPrices(all):Promise.resolve({}),fetchMkt(),fetchAllMkts()]);
+  var res=await Promise.allSettled([all.length?apiPrices(all):Promise.resolve({}),fetchMkt(),fetchAllMkts(),fetchFundHistory()]);
   if(res[0].status==='fulfilled')Object.assign(prices,res[0].value);
   takeSnap();
   render();
@@ -1493,6 +1527,7 @@ function openSettings(){
   if(gbpusd)document.getElementById('cfg-fx').value=gbpusd.toFixed(4);
   document.getElementById('cfg-jbkey').value=CFG.jbKey||'';
   document.getElementById('cfg-jbbin').value=CFG.jbBin||'';
+  document.getElementById('cfg-opening-bal').value=CFG.openingBal||'';
   var ks=document.getElementById('key-status');
   ks.textContent=CFG.apiKey?'(saved)':'(not set)';ks.style.color=CFG.apiKey?'var(--g)':'var(--r)';
   openModal('set');
@@ -1513,6 +1548,7 @@ function saveSettings(){
     tgt:+document.getElementById('cfg-tgt').value,
     jbKey:document.getElementById('cfg-jbkey').value,
     jbBin:document.getElementById('cfg-jbbin').value,
+    openingBal:parseFloat(document.getElementById('cfg-opening-bal').value)||0,
   });
   saveCFG();closeModal('set');render();toast('Settings saved','ok');
   if(CFG.apiKey)refreshAll();
