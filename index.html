@@ -8,7 +8,8 @@
 <style>
 :root{--bg:#f0ede8;--sur:#fff;--bdr:rgba(0,0,0,0.1);--txt:#111;--mut:#777;
   --g:#2d5a0e;--gl:#e8f3db;--r:#b83232;--rl:#fdecea;--a:#7a4d00;--al:#fdf0d9;
-  --b:#0f5294;--bl:#e4effa;--dk:#1b2b3b;--dk2:#1e3048;--rad:10px}
+  --b:#0f5294;--bl:#e4effa;--dk:#1b2b3b;--dk2:#1e3048;--rad:10px;
+  --sg:#4cdb6e;--sr:#ff6b6b;--sa:#f0b429}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;height:100vh;overflow:hidden}
 header{height:46px;background:var(--dk);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 14px;position:fixed;top:0;left:0;right:0;z-index:100}
@@ -836,6 +837,7 @@ function fGBP(v){return (v<0?'\u2212':'')+'\u00a3'+Math.round(Math.abs(v)).toLoc
 function f2(v){return Number(v).toFixed(2);}
 function fP(v,d){d=d===undefined?1:d;return (v>=0?'+':'')+Number(v).toFixed(d)+'%';}
 function pclr(v){return v>0?'var(--g)':v<0?'var(--r)':'var(--mut)';}
+function pclrB(v){return v>0?'var(--sg)':v<0?'var(--sr)':'rgba(255,255,255,0.35)';}
 function today(){return new Date().toISOString().slice(0,10);}
 
 // ═══════════════════════════════════════════════════════════════
@@ -1696,7 +1698,7 @@ function renderSidebar(){
   var pg=document.getElementById('sb-perf');
   pg.innerHTML='<span class="pg-h" style="text-align:left">Period</span><span class="pg-h">Change</span><span class="pg-h">%</span>';
   perfs.forEach(function(p){
-    var clr=p.pct===null?'rgba(255,255,255,.25)':pclr(p.pct);
+    var clr=p.pct===null?'rgba(255,255,255,.25)':pclrB(p.pct);
     pg.innerHTML+='<span class="pg-l">'+p.label+'</span>'
       +'<span class="pg-v" style="color:'+clr+'">'+(p.dif!==null?fGBP(p.dif):'--')+'</span>'
       +'<span class="pg-v" style="color:'+clr+'">'+(p.pct!==null?fP(p.pct):'--')+'</span>';
@@ -1707,8 +1709,8 @@ function renderSidebar(){
     var d=mktCache[m.key];
     var c1d=d&&d.c1d!=null?fP(d.c1d):'-';
     var cYtd=d&&d.cYtd!=null?fP(d.cYtd):'-';
-    var c1dClr=d&&d.c1d!=null?pclr(d.c1d):'rgba(255,255,255,.25)';
-    var cYtdClr=d&&d.cYtd!=null?pclr(d.cYtd):'rgba(255,255,255,.25)';
+    var c1dClr=d&&d.c1d!=null?pclrB(d.c1d):'rgba(255,255,255,.25)';
+    var cYtdClr=d&&d.cYtd!=null?pclrB(d.cYtd):'rgba(255,255,255,.25)';
     var priceStr=d&&d.price?formatMktPrice(d.price,m.key):'-';
     mg.innerHTML+='<span class="mg-n">'+m.name+'</span>'
       +'<span class="mg-p" style="color:rgba(255,255,255,.6)">'+priceStr+'</span>'
