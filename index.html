@@ -991,19 +991,28 @@ async function apiFX(sym){
 async function fetchFundHistory(){
   var tickers=[...new Set(funds.filter(function(f){return f.ticker&&!f.priceOverride;}).map(function(f){return f.ticker;}))];
   if(!tickers.length||!CFG.apiKey)return;
+  // LSE exchange suffixes to try if plain ticker fails
+  var fallbacks=[':LSE',':XLON','.L'];
   for(var i=0;i<tickers.length;i++){
     var sym=tickers[i];
     var vals=await apiTS(sym,270);
+    // If plain ticker fails, try with exchange suffixes
+    if(!vals){
+      for(var j=0;j<fallbacks.length;j++){
+        await new Promise(function(res){setTimeout(res,300);});
+        vals=await apiTS(sym+fallbacks[j],270);
+        if(vals)break;
+      }
+    }
     if(vals){
       var hist=processTS(vals);
       if(hist){
         if(!tickerMeta[sym])tickerMeta[sym]={};
         tickerMeta[sym].history=hist;
-        // Update raw price from latest data
         prices[sym]=hist.price;
       }
     }
-    await new Promise(function(res){setTimeout(res,200);});
+    await new Promise(function(res){setTimeout(res,300);});
   }
 }
 
