@@ -928,10 +928,11 @@ function getSnap(daysAgo){
 }
 function formatMktPrice(p,key){
   if(!p)return '-';
-  // FX rates: show 4dp; crypto: 0dp if >100; others: 2dp
-  if(key==='GBPUSD'||key==='EURUSD')return p.toFixed(4);
-  if(key==='BTC'&&p>1000)return '$'+Math.round(p).toLocaleString();
-  if(p>=1000)return p>=10000?Math.round(p).toLocaleString():p.toFixed(0);
+  if(key==='gbpusd'||key==='eurusd')return p.toFixed(4);
+  if(key==='btc')return '$'+Math.round(p).toLocaleString();
+  if(key==='gold'||key==='silver')return '$'+p.toFixed(2); // $/oz
+  if(p>=10000)return Math.round(p).toLocaleString();
+  if(p>=1000)return p.toFixed(0);
   return p.toFixed(2);
 }
 function portPerfs(){
@@ -1079,8 +1080,8 @@ var MKTS=[
   {key:'sp500', name:'S&P 500',  sym:'SPY',     },
   {key:'nasdaq',name:'Nasdaq',   sym:'ONEQ',    },
   {key:'uk',    name:'UK/FTSE',  sym:'EWU',     },
-  {key:'world', name:'World',    sym:'ACWI',    },
-  {key:'gold',  name:'Gold',     sym:'GLD',     },
+  {key:'gold',  name:'Gold $/oz',sym:'XAU/USD', },
+  {key:'silver',name:'Silver $/oz',sym:'XAG/USD'},
   {key:'btc',   name:'Bitcoin',  sym:'BTC/USD', },
   {key:'gbpusd',name:'GBP/USD',  sym:'GBP/USD', },
   {key:'eurusd',name:'EUR/USD',  sym:'EUR/USD', },
