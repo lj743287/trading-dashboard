@@ -1162,10 +1162,32 @@ function savePartial(){
   if(!qty||qty<1){toast('Enter shares sold','err');return;}
   if(!price||price<=0){toast('Enter exit price','err');return;}
   if(qty>=t.qty){toast('Use Close trade for a full exit','warn');return;}
+  var partialPnl=(price-t.entryPrice)*qty;
+  var partialFeeUSD=3.99*gbpusd; // sell fee for partial
+  var partialNet=partialPnl-partialFeeUSD;
+  // 1. Record partial details on the active trade
   t.partialDone=true;t.partialPrice=price;t.partialShares=qty;
   t.partialPct=gainPct(t.entryPrice,price);t.phase='partial';
-  saveTrades();render();closeModal('part');partialId=null;
-  toast(t.symbol+' partial: '+qty+' shares at $'+f2(price)+' ('+fUSD(( price-t.entryPrice)*qty)+')','ok');
+  // 2. Reduce qty to remaining shares
+  t.qty=t.qty-qty;
+  // 3. Add partial exit to closed trades so P&L is tracked
+  closedTrades.push({
+    id:Date.now().toString()+'p',
+    symbol:t.symbol,
+    entryPrice:t.entryPrice,
+    exitPrice:price,
+    qty:qty,
+    entryDate:t.entryDate,
+    closeDate:today(),
+    pnl:partialNet,
+    returnPct:gainPct(t.entryPrice,price),
+    reason:'Partial exit',
+    isPartial:true
+  });
+  // 4. Credit proceeds to cash
+  cash.usd=Math.round((cash.usd+(price*qty)-partialFeeUSD)*100)/100;
+  saveCash();saveTrades();saveClosed();render();closeModal('part');partialId=null;
+  toast(t.symbol+' partial: '+qty+' shares @ $'+f2(price)+' → '+fUSD(partialNet)+' net','ok');
 }
 function openClose(id){
   closingId=id;
