@@ -766,37 +766,59 @@ function restoreLocalBackup(){
 
 function repairPartials(){
   var fixed=0;
+  // Step 1: Remove ALL bad partial entries (NaN price, NaN pnl, or wrong reason)
+  var before=closedTrades.length;
+  closedTrades=closedTrades.filter(function(c){
+    var badExit=!c.exitPrice||isNaN(c.exitPrice)||c.exitPrice<=0;
+    var badPnl=isNaN(c.pnl);
+    // Remove if it looks like a broken partial (NaN values or low qty matching a partialShares count)
+    if(badExit||badPnl){
+      // Only remove if it matches a known partial trade
+      var matchesTrade=trades.some(function(t){
+        return t.symbol===c.symbol&&t.partialShares===c.qty&&t.partialDone;
+      });
+      if(matchesTrade)return false; // remove this bad entry
+    }
+    return true;
+  });
+  if(closedTrades.length<before)fixed+=before-closedTrades.length;
+
+  // Step 2: Fix each partial trade
   trades.forEach(function(t){
-    if(!t.partialDone||!t.partialShares||!t.partialPrice)return;
+    if(!t.partialDone||!t.partialShares)return;
+    var price=parseFloat(t.partialPrice);
+    if(!price||isNaN(price)||price<=0){
+      toast('HPP: enter partial exit price manually via Edit trade','warn');
+      return;
+    }
     // Fix qty if not yet reduced
     if(!t.qtyAfterPartial){
       t.qty=t.qty-t.partialShares;
       t.qtyAfterPartial=t.qty;
       fixed++;
     }
-    // Add closed trades entry if missing
-    var hasEntry=closedTrades.some(function(c){
-      return c.isPartial&&c.symbol===t.symbol&&c.entryDate===t.entryDate;
+    // Add correct closed trades entry if missing
+    var hasGoodEntry=closedTrades.some(function(c){
+      return c.symbol===t.symbol&&c.qty===t.partialShares&&!isNaN(c.exitPrice)&&c.exitPrice>0;
     });
-    if(!hasEntry){
-      var pnl=(t.partialPrice-t.entryPrice)*t.partialShares-(3.99*gbpusd);
+    if(!hasGoodEntry){
+      var pnl=(price-t.entryPrice)*t.partialShares-(3.99*gbpusd);
       closedTrades.push({
         id:t.id+'p',symbol:t.symbol,entryPrice:t.entryPrice,
-        exitPrice:t.partialPrice,qty:t.partialShares,
+        exitPrice:price,qty:t.partialShares,
         entryDate:t.entryDate,closeDate:today(),
-        pnl:pnl,returnPct:gainPct(t.entryPrice,t.partialPrice),
+        pnl:pnl,returnPct:gainPct(t.entryPrice,price),
         reason:'Partial exit',isPartial:true
       });
       fixed++;
     }
   });
+
   if(fixed>0){
-    saveTrades();saveClosed();
-    doPush(0); // push fixed data to cloud immediately
-    render();
-    toast('Repaired '+fixed+' partial trade entries ✓','ok');
+    saveTrades();saveClosed();doPush(0);render();
+    toast('Fixed '+fixed+' entries ✓ Data pushed to cloud','ok');
   } else {
-    toast('No partial trades need repair','ok');
+    toast('No issues found','ok');
   }
 }
 
