@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Trade Manager</title>
+<title>Trade Manager v2.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 :root{--bg:#f0ede8;--sur:#fff;--bdr:rgba(0,0,0,0.1);--txt:#111;--mut:#777;
@@ -1840,8 +1840,20 @@ function renderStats(){
   document.getElementById('sb-dep').textContent=fUSD(dep);
   document.getElementById('sb-avail').textContent=fUSD(usdFree)+' free  |  '+fUSD(eff)+' total equity';
 }
+function fixNaNNow(){
+  var before=closedTrades.length;
+  closedTrades=closedTrades.filter(function(c){var ep=parseFloat(c.exitPrice);return ep&&!isNaN(ep)&&ep>0;});
+  saveClosed();doPush(0);render();
+  toast('Removed '+(before-closedTrades.length)+' broken entries ✓','ok');
+}
 function renderTrades(){
   var g=document.getElementById('tgrid');
+  // Show fix banner if broken closed trades exist
+  var nb=document.getElementById('nan-fix-banner');
+  var nanCount=closedTrades.filter(function(c){var ep=parseFloat(c.exitPrice);return !ep||isNaN(ep)||ep<=0;}).length;
+  if(!nb){nb=document.createElement('div');nb.id='nan-fix-banner';g.parentNode.insertBefore(nb,g);}
+  nb.style.display=nanCount>0?'':'none';
+  nb.innerHTML=nanCount>0?'<div style="background:#b83232;color:#fff;padding:10px 14px;border-radius:8px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between"><span>⚠️ '+nanCount+' broken closed trade entr'+(nanCount>1?'ies':'y')+' (missing exit price)</span><button onclick="fixNaNNow()" style="background:#fff;color:#b83232;border:none;padding:5px 14px;border-radius:6px;font-weight:700;cursor:pointer">Fix now</button></div>':'';
   if(!trades.length){g.innerHTML='<div class="empty"><div style="font-size:28px">&#128200;</div><p>No active trades. Click <strong>+ Add trade</strong> to begin.</p></div>';return;}
   g.innerHTML=trades.map(function(t){return tradeCard(t);}).join('');
 }
