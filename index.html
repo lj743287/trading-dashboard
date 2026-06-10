@@ -2428,7 +2428,7 @@ document.getElementById('mok-fund').onclick=saveFundModal;
 // Export / Import / Cloud sync
 document.getElementById('btn-export').onclick=exportData;
 document.getElementById('btn-restore-bk').onclick=restoreLocalBackup;
-  document.getElementById('btn-repair-partial').onclick=function(){closeModal('settings');setTimeout(repairPartials,500);};
+  document.getElementById('btn-repair-partial').onclick=repairPartials;
 document.getElementById('btn-import-lbl').onclick=function(){document.getElementById('btn-import').click();};
 document.getElementById('btn-import').onchange=function(e){importData(e.target.files[0]);};
 document.getElementById('btn-cloud-push').onclick=function(){doPush(0);};
