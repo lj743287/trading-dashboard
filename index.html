@@ -313,6 +313,7 @@ header{height:46px;background:var(--dk);color:#fff;display:flex;align-items:cent
   <div class="mfoot" style="flex-wrap:wrap;gap:6px">
     <button id="btn-export" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent">&#8659; Export data</button>
     <button id="btn-restore-bk" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent;color:var(--a)">&#8617; Restore backup</button>
+    <button id="btn-repair-partial" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent;color:var(--b)">&#128295; Repair partials</button>
     <button id="btn-import-lbl" style="padding:7px 12px;border-radius:7px;border:1px solid var(--bdr);cursor:pointer;font-size:12px;background:transparent">&#8657; Import data</button>
     <input id="btn-import" type="file" accept=".json" style="display:none">
     <div style="flex:1"></div>
@@ -761,6 +762,42 @@ function restoreLocalBackup(){
   saveTrades();saveClosed();saveFunds();saveCash();saveIncome();saveGenesis();saveSnaps();
   render();
   toast('Backup restored from '+age,'ok');
+}
+
+function repairPartials(){
+  var fixed=0;
+  trades.forEach(function(t){
+    if(!t.partialDone||!t.partialShares||!t.partialPrice)return;
+    // Fix qty if not yet reduced
+    if(!t.qtyAfterPartial){
+      t.qty=t.qty-t.partialShares;
+      t.qtyAfterPartial=t.qty;
+      fixed++;
+    }
+    // Add closed trades entry if missing
+    var hasEntry=closedTrades.some(function(c){
+      return c.isPartial&&c.symbol===t.symbol&&c.entryDate===t.entryDate;
+    });
+    if(!hasEntry){
+      var pnl=(t.partialPrice-t.entryPrice)*t.partialShares-(3.99*gbpusd);
+      closedTrades.push({
+        id:t.id+'p',symbol:t.symbol,entryPrice:t.entryPrice,
+        exitPrice:t.partialPrice,qty:t.partialShares,
+        entryDate:t.entryDate,closeDate:today(),
+        pnl:pnl,returnPct:gainPct(t.entryPrice,t.partialPrice),
+        reason:'Partial exit',isPartial:true
+      });
+      fixed++;
+    }
+  });
+  if(fixed>0){
+    saveTrades();saveClosed();
+    doPush(0); // push fixed data to cloud immediately
+    render();
+    toast('Repaired '+fixed+' partial trade entries ✓','ok');
+  } else {
+    toast('No partial trades need repair','ok');
+  }
 }
 
 function getCloudData(){
@@ -2391,6 +2428,7 @@ document.getElementById('mok-fund').onclick=saveFundModal;
 // Export / Import / Cloud sync
 document.getElementById('btn-export').onclick=exportData;
 document.getElementById('btn-restore-bk').onclick=restoreLocalBackup;
+  document.getElementById('btn-repair-partial').onclick=function(){closeModal('settings');setTimeout(repairPartials,500);};
 document.getElementById('btn-import-lbl').onclick=function(){document.getElementById('btn-import').click();};
 document.getElementById('btn-import').onchange=function(e){importData(e.target.files[0]);};
 document.getElementById('btn-cloud-push').onclick=function(){doPush(0);};
