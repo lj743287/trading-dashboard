@@ -851,6 +851,9 @@ async function doPush(retries){
 }
 async function doPull(silent){
   if(!CFG.jbKey||!CFG.jbBin)return false;
+  // Respect sync pause — don't pull right after a push/import
+  var pauseUntil=parseInt(localStorage.getItem('tm_sync_pause')||'0');
+  if(Date.now()<pauseUntil){if(!silent)toast('Sync paused briefly after push','ok');return false;}
   if(!silent)setSyncStatus('pulling','checking...');
   try{
     var r=await fetch(JB+'/'+CFG.jbBin+'/latest',{headers:{'X-Master-Key':CFG.jbKey}});
