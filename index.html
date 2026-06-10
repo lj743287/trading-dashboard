@@ -1735,6 +1735,12 @@ function buildMonthly(){
 // RENDER
 // ═══════════════════════════════════════════════════════════════
 function render(){
+  // Safety: remove any closed trade entries with NaN values before rendering
+  var hadNaN=closedTrades.some(function(c){return isNaN(c.pnl)||isNaN(c.exitPrice)||!c.exitPrice;});
+  if(hadNaN){
+    closedTrades=closedTrades.filter(function(c){return !isNaN(c.pnl)&&!isNaN(c.exitPrice)&&c.exitPrice>0;});
+    saveClosed();
+  }
   renderStats();renderTrades();renderHistory();
   renderSidebar();renderPortfolio();
   if(document.getElementById('panel-analytics').classList.contains('on'))renderAnalytics();
